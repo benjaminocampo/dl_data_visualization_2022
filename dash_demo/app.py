@@ -1,136 +1,103 @@
+import numpy
 import pandas as pd
-
-import plotly.graph_objects as go
 import plotly.express as px
+from dash import Dash, html, dcc
 
-from dash import Dash
-from dash import dcc
-from dash import html
+
+def to_categorical(column, bin_size=5, min_cut=15, max_cut=50):
+    if min_cut is None:
+        min_cut = int(round(column.min())) - 1
+    value_max = int(numpy.ceil(column.max()))
+    max_cut = min(max_cut, value_max)
+    intervals = [(x, x + bin_size) for x in range(min_cut, max_cut, bin_size)]
+    if max_cut != value_max:
+        intervals.append((max_cut, value_max))
+    return pd.cut(column, pd.IntervalIndex.from_tuples(intervals))
+
 
 url = 'https://www.famaf.unc.edu.ar/~nocampo043/sysarmy_survey_2020_processed.csv'
 df = pd.read_csv(url)
 
-sorted_studies_levels = ["Primary", "Secondary", "Terciary", "University",
-                         "Postgraduate", "Doctorate", "Postdoc"]
+df_fp = df[df["work_contract_type"].isin(["Full-Time", "Part-Time"])]
 
-# Barplot of the profile_studies_level alongside their frequency count.
-df_studies_level_count = (
-    df["profile_studies_level"]
-      .value_counts()
-      .reset_index()
-      .rename(columns={"index": "profile_studies_level",
-                       "profile_studies_level": "count"})
+salary_vs_contract_sc_fig = px.scatter(df_fp,
+                                       y="salary_monthly_GROSS",
+                                       x="salary_monthly_NET",
+                                       color="work_contract_type",
+                                       color_discrete_sequence=["lightseagreen", "indianred"])
+
+salary_vs_contract_sc_fig.update_layout(
+    plot_bgcolor="rgba(0, 0, 0, 0)",
+    paper_bgcolor="rgba(0, 0, 0, 0)",
+    font_color="white",
 )
 
-studies_level_count_fig = px.bar(df_studies_level_count,
-                                 x='profile_studies_level',
-                                 y='count',
-                                 category_orders=dict(profile_studies_level=sorted_studies_levels))
+salary_vs_contract_box_fig = px.box(df_fp,
+                                    x="work_contract_type",
+                                    y="salary_monthly_NET",
+                                    points="all", color_discrete_sequence=["lightseagreen"])
 
-# Barplot of the profile_studies_level alongside the mean of the salary
-
-df_studies_level_mean = (
-    df[["profile_studies_level", "salary_monthly_NET"]]
-      .groupby("profile_studies_level")
-      .mean()
-      .reset_index()
-      .rename(columns={"salary_monthly_NET": "salary_monthly_NET_mean"})
+salary_vs_contract_box_fig.update_layout(
+    plot_bgcolor="rgba(0, 0, 0, 0)",
+    paper_bgcolor="rgba(0, 0, 0, 0)",
+    font_color="white",
+    yaxis_range=[0,1000000]
 )
 
-studies_level_mean_fig = px.bar(df_studies_level_mean,
-                                x='profile_studies_level',
-                                y='salary_monthly_NET_mean',
-                                category_orders=dict(profile_studies_level=sorted_studies_levels))
+# salary_vs_contract_box_fig.update_layout(height=700, width=900)
 
+df_fp['profile_age_segment'] = to_categorical(df.profile_age)
 
-# Barplot using grouped studies level alongside the mean of the salary
-new_groups = {
-    'Postdoc': 'Postgraduate',
-    'Doctorate': 'Postgraduate',
-    'Primary': 'Pre-degree',
-    'Secondary': 'Pre-degree'
-}
-order = ['Pre-degree', 'Terciary', 'University', 'Postgraduate']
-grouped_studies_level = df.profile_studies_level.replace(new_groups)
-df["grouped_profile_studies_level"] = grouped_studies_level
-
-df_grouped_studies_level_mean = (
-    df[["grouped_profile_studies_level", "profile_studies_level_state", "salary_monthly_NET"]]
-      .groupby(["grouped_profile_studies_level", "profile_studies_level_state"])
-      .mean()
+df_age_segment_mean = (
+    df_fp[["profile_age_segment", "salary_monthly_NET"]]
+      .groupby("profile_age_segment")
+      .agg(salary_monthly_NET_mean=("salary_monthly_NET", "mean"),
+           salary_monthly_NET_std=("salary_monthly_NET", "std"))
       .reset_index()
-      .rename(columns={"salary_monthly_NET": "salary_monthly_NET_mean"})
 )
 
-grouped_studies_level_fig = px.bar(df_grouped_studies_level_mean,
-                                   x='grouped_profile_studies_level',
-                                   y='salary_monthly_NET_mean',
-                                   color='profile_studies_level_state',
-                                   barmode='group',
-                                   category_orders=dict(grouped_profile_studies_level=order))
+df_age_segment_mean["profile_age_segment_str"] = df_age_segment_mean[
+    "profile_age_segment"].astype(str)
+salary_vs_age_bar_fig = px.bar(df_age_segment_mean,
+                               x='profile_age_segment_str',
+                               y='salary_monthly_NET_mean',
+                               error_y="salary_monthly_NET_std",
+                               color_discrete_sequence=["lightseagreen"])
 
-header = {
-    "background-color": "#222222",
-    "height": "256px",
-    "display": "flex",
-    "flex-direction": "column",
-    "justify-content": "center;",
-}
+salary_vs_age_bar_fig.update_layout(
+    plot_bgcolor="rgba(0, 0, 0, 0)",
+    paper_bgcolor="rgba(0, 0, 0, 0)",
+    font_color="white",
+)
 
-header_title = {
-    'color': '#FFFFFF',
-    'font-size': '48px',
-    'font-weight': 'bold',
-    'text-align': 'center',
-    'margin': '0 auto',
-}
-
-header_description = {
-    'color': '#CFCFCF',
-    'margin': '4px auto',
-    'text-align': 'center',
-    'max-width': '384px',
-}
-
-plot_card = {
-    'margin-bottom': '24px',
-    'box-shadow': '0 4px 6px 0 rgba(0, 0, 0, 0.18)'
-}
-
-wrapper = {
-    'margin-right': 'auto',
-    'margin-left': 'auto',
-    'max-width': '1024px',
-    'padding-right': '10px',
-    'padding-left': '10px',
-    'margin-top': '32px',
-    'font-family': '"Lato", sans-serif',
-    'background-color': '#F7F7F7'
-}
-
-app = Dash(__name__)
-app.layout = html.Div(
-    children=[
-        html.Div(
-            children=[
-                html.H1(children="Using Dash", style=header_title),
-                html.P(
-                    children="Analyze the salary monthly net alongside the years of experience",
-                    style=header_description
-                )     
-            ],
-            style=header),
-        html.Div(
-            children=[
-                dcc.Graph(figure=studies_level_count_fig),
-                dcc.Graph(figure=studies_level_mean_fig),
-                dcc.Graph(figure=grouped_studies_level_fig)         
-            ],
-            style=plot_card,
-        )
+external_stylesheets = [{"href": "./assets/styles.css", "rel": "stylesheet"}]
+app = Dash(__name__, external_stylesheets=external_stylesheets)
+app.layout = html.Div(children=[
+    # Header
+    html.Div(
+        children=[
+            # Title
+            html.Div(children=[
+                html.H1(children="Monthly Salary in Argentina - Survey Sysarmy"),
+                html.
+                P(children=
+                  "Comparing salary monthly net and multiple variables",
+                  className="header__title")
+            ]),
+            html.Img(src="./assets/dash-new-logo.png",
+                     className="header__logo")
+        ],
+        className="header"),
+    # Content
+    html.Div(children=[
+        html.Div(children=[dcc.Graph(figure=salary_vs_contract_box_fig, className="left_plot--graph")], className="left_plot column"),
+        html.Div(children=[
+            dcc.Graph(figure=salary_vs_contract_sc_fig),
+            dcc.Graph(figure=salary_vs_age_bar_fig)
+        ], className="right_plot column")
     ],
-    style=wrapper
-)
+             className="content")
+], className="container")
 
-if __name__ =='__main__':
+if __name__ == '__main__':
     app.run_server(debug=True)
